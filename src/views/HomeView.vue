@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { useGameStore } from '@/stores/gameStore'
 import { storeToRefs } from 'pinia'
 import MatrixBackground from '@/components/MatrixBackground.vue'
+import AchievementsList from "@/components/AchievementsList.vue";
+import ActiveAffects from "@/components/ActiveAffects.vue";
 
 const gameStore = useGameStore()
 const { bonuses, upgrades, bestScore } = storeToRefs(gameStore)
@@ -27,38 +29,6 @@ const filteredUpgrades = computed(() =>
         u => upgradeCategory(u) === activeTab.value && (!u.unlockAt || bestScore.value >= u.unlockAt)
     )
 )
-
-const bonusEngineCount = computed(() => {
-    const upgrade = upgrades.value.find(u => u.name === 'Faster Bonus Engine')
-    return upgrade?.count || 0
-})
-
-const codeOptimizerCount = computed(() => {
-    const upgrade = upgrades.value.find(u => u.name === 'Code Optimizer')
-    return upgrade?.count || 0
-})
-
-const automatedTestingCount = computed(() => {
-    const upgrade = upgrades.value.find(u => u.name === 'Automated Testing')
-    return upgrade?.count || 0
-})
-
-const continuousIntegrationCount = computed(() => {
-    const upgrade = upgrades.value.find(u => u.name === 'Continuous Integration')
-    return upgrade?.count || 0
-})
-
-const costReduction = computed(() => {
-    return (1 - gameStore.getCostReduction()) * 100
-})
-
-const bugReduction = computed(() => {
-    return (1 - gameStore.getNegativeEventChanceReduction()) * 100
-})
-
-const featureBoost = computed(() => {
-    return (gameStore.getPositiveEventChanceIncrease() - 1) * 100
-})
 </script>
 
 <template>
@@ -81,36 +51,7 @@ const featureBoost = computed(() => {
             </div>
         </div>
 
-        <div class="fixed top-4 right-4 space-y-2 z-50 text-xs">
-            <div v-if="gameStore.multiplierActive"
-                 class="bg-red-500 text-black font-bold px-3 py-1 rounded shadow animate-pulse">
-                🔥 x2 Clicks Active
-            </div>
-            <div v-if="gameStore.autoclickActive"
-                 class="bg-blue-400 text-black font-bold px-3 py-1 rounded shadow animate-pulse">
-                🖱️ Auto Click Active
-            </div>
-            <div v-if="bonusEngineCount > 0"
-                 class="bg-green-400 text-black font-bold px-3 py-1 rounded shadow">
-                ⚡ Bonus Engine Lvl {{ bonusEngineCount }}
-            </div>
-            <div v-if="codeOptimizerCount > 0"
-                 class="bg-purple-400 text-black font-bold px-3 py-1 rounded shadow">
-                💰 Cost -{{ costReduction.toFixed(0) }}%
-            </div>
-            <div v-if="automatedTestingCount > 0"
-                 class="bg-blue-300 text-black font-bold px-3 py-1 rounded shadow">
-                🐛 Bugs -{{ bugReduction.toFixed(0) }}%
-            </div>
-            <div v-if="continuousIntegrationCount > 0"
-                 class="bg-yellow-300 text-black font-bold px-3 py-1 rounded shadow">
-                🚀 Features +{{ featureBoost.toFixed(0) }}%
-            </div>
-            <div v-if="gameStore.themeMode === 'matrix'"
-                 class="bg-black text-lime-400 font-bold px-3 py-1 border border-lime-400 rounded shadow">
-                🧪 Matrix Theme Active
-            </div>
-        </div>
+        <ActiveAffects />
 
         <div
             class="w-full max-w-6xl flex flex-col relative lg:flex-row gap-8 items-stretch justify-center"
@@ -158,23 +99,6 @@ const featureBoost = computed(() => {
                     <p class="text-xs text-gray-400 mt-1">
                         Resets all progress but permanently increases LOC gain by 20% per point.
                     </p>
-                </div>
-
-                <div class="mt-8 max-w-2xl w-full animate-fade-in">
-                    <h2 class="text-lg font-semibold mb-2">📆 Daily Missions</h2>
-                    <ul class="space-y-1 text-xs">
-                        <li
-                            v-for="(mission, i) in gameStore.dailyMissions"
-                            :key="i"
-                            :class="mission.completed ? 'text-green-400' : 'text-yellow-200'"
-                        >
-                            ✅ {{ mission.text }} —
-                            <span v-if="!mission.completed">
-                                {{ Math.min(mission.progress, mission.goal).toFixed(0) }}/{{ mission.goal }}
-                            </span>
-                            <span v-else>Reward claimed!</span>
-                        </li>
-                    </ul>
                 </div>
             </div>
 
@@ -255,18 +179,7 @@ const featureBoost = computed(() => {
             🔄 Reset Game
         </button>
 
-        <div class="mt-12 max-w-2xl w-full animate-fade-in">
-            <h2 class="text-lg font-semibold mb-2">Achievements</h2>
-            <ul class="space-y-1 text-xs">
-                <li
-                    v-for="(ach, i) in gameStore.achievements"
-                    :key="i"
-                    :class="ach.unlocked ? 'text-green-400' : 'text-gray-500'"
-                >
-                    {{ ach.text }}
-                </li>
-            </ul>
-        </div>
+        <AchievementsList />
     </div>
 </template>
 

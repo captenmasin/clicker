@@ -25,15 +25,6 @@ interface Bonus {
   expiresAt: number
 }
 
-interface DailyMission {
-  text: string
-  completed: boolean
-  goal: number
-  progress: number
-  reward: number
-  type: 'clicks' | 'loc'
-}
-
 export const useGameStore = defineStore('game', () => {
     const linesOfCode = ref<number>(parseInt(localStorage.getItem('linesOfCode') || '0'))
     const bestScore = ref<number>(parseInt(localStorage.getItem('bestScore') || '0'))
@@ -43,10 +34,7 @@ export const useGameStore = defineStore('game', () => {
 
     const streakCount = ref<number>(parseInt(localStorage.getItem('streakCount') || '0'))
     const lastStreakReward = ref<number>(parseInt(localStorage.getItem('lastStreakReward') || '0'))
-    const lastActiveDate = ref<string>(localStorage.getItem('lastActiveDate') || '')
 
-    const dailyMissions = ref<DailyMission[]>([])
-    const lastMissionDate = ref<string>(localStorage.getItem('lastMissionDate') || '')
 
     const defaultUpgrades = ref<Upgrade[]>([
         // Auto (passive income generators)
@@ -168,17 +156,6 @@ export const useGameStore = defineStore('game', () => {
         const gained = clickValue.value * multiplier
         linesOfCode.value += gained
 
-        // Update mission progress
-        for (const mission of dailyMissions.value) {
-            if (mission.completed) continue
-            if (mission.type === 'clicks') mission.progress += 1
-            if (mission.type === 'loc') mission.progress += gained
-            if (mission.progress >= mission.goal) {
-                mission.completed = true
-                linesOfCode.value += mission.reward
-            }
-        }
-
         checkAchievements()
     }
 
@@ -277,50 +254,6 @@ export const useGameStore = defineStore('game', () => {
         }
     }
 
-    const generateDailyMissions = () => {
-        const today = new Date().toISOString().split('T')[0]
-
-        if (lastActiveDate.value !== today) {
-            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-
-            if (lastActiveDate.value === yesterday) {
-                streakCount.value++
-            } else {
-                streakCount.value = 1
-            }
-
-            lastActiveDate.value = today
-            localStorage.setItem('streakCount', streakCount.value.toString())
-            localStorage.setItem('lastActiveDate', today)
-        }
-
-        if (lastMissionDate.value === today) return // already generated today
-
-        const missions: DailyMission[] = [
-            {
-                text: 'Click 100 times',
-                completed: false,
-                goal: 100,
-                progress: 0,
-                reward: 1000,
-                type: 'clicks'
-            },
-            {
-                text: 'Earn 5,000 LOC',
-                completed: false,
-                goal: 5000,
-                progress: 0,
-                reward: 5000,
-                type: 'loc'
-            }
-        ]
-
-        dailyMissions.value = missions
-        lastMissionDate.value = today
-        localStorage.setItem('dailyMissions', JSON.stringify(missions))
-        localStorage.setItem('lastMissionDate', today)
-    }
-
     const checkAchievements = () => {
         if (linesOfCode.value >= 100) achievements.value[0].unlocked = true
         if (upgrades.value[0].count >= 5) achievements.value[1].unlocked = true
@@ -415,12 +348,6 @@ export const useGameStore = defineStore('game', () => {
 
     // Lifecycle
     onMounted(() => {
-        const storedMissions = localStorage.getItem('dailyMissions')
-        if (storedMissions) {
-            dailyMissions.value = JSON.parse(storedMissions)
-        }
-        generateDailyMissions()
-
         setInterval(() => {
             linesOfCode.value += passiveRate.value
             checkAchievements()
@@ -471,10 +398,6 @@ export const useGameStore = defineStore('game', () => {
         localStorage.setItem('upgrades', JSON.stringify(val))
     }, { deep: true })
 
-    watch(dailyMissions, val => {
-        localStorage.setItem('dailyMissions', JSON.stringify(val))
-    }, { deep: true })
-
     watch(theme, val => {
         localStorage.setItem('theme', val)
         document.body.className = val === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'
@@ -512,7 +435,6 @@ export const useGameStore = defineStore('game', () => {
         getUpgradeCount,
         claimStreakReward,
         nextStreakReward,
-        dailyMissions,
         streakCount,
         getCostReduction,
         getNegativeEventChanceReduction,
