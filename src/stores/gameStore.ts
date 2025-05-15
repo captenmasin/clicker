@@ -1,12 +1,14 @@
-import {defineStore} from 'pinia'
-import {ref, watch, onMounted, computed} from 'vue'
+import { defineStore } from 'pinia'
+import { ref, watch, onMounted, computed } from 'vue'
 
 interface Upgrade {
   name: string
   cost: number
-  lpc?: number
-  lpcClick?: number
+  linesPerSecond?: number
+  linesPerClick?: number
   count: number
+  unlockAt?: number
+  type?: 'cosmetic' | 'functional'
 }
 
 interface Achievement {
@@ -23,73 +25,176 @@ interface Bonus {
   expiresAt: number
 }
 
+interface DailyMission {
+  text: string
+  completed: boolean
+  goal: number
+  progress: number
+  reward: number
+  type: 'clicks' | 'loc'
+}
+
 export const useGameStore = defineStore('game', () => {
     const linesOfCode = ref<number>(parseInt(localStorage.getItem('linesOfCode') || '0'))
+    const bestScore = ref<number>(parseInt(localStorage.getItem('bestScore') || '0'))
+    const theme = ref<string>(localStorage.getItem('theme') || 'dark')
+    const themeMode = ref<string>(localStorage.getItem('themeMode') || 'default')
+    const refactorPoints = ref<number>(parseInt(localStorage.getItem('refactorPoints') || '0'))
+
+    const streakCount = ref<number>(parseInt(localStorage.getItem('streakCount') || '0'))
+    const lastStreakReward = ref<number>(parseInt(localStorage.getItem('lastStreakReward') || '0'))
+    const lastActiveDate = ref<string>(localStorage.getItem('lastActiveDate') || '')
+
+    const dailyMissions = ref<DailyMission[]>([])
+    const lastMissionDate = ref<string>(localStorage.getItem('lastMissionDate') || '')
+
+    const defaultUpgrades = ref<Upgrade[]>([
+        // Auto (passive income generators)
+        { name: 'Junior Dev', cost: 50, linesPerSecond: 1, count: 0 },
+        { name: 'Mid-Level Dev', cost: 200, linesPerSecond: 5, count: 0 },
+        { name: 'Senior Dev', cost: 1000, linesPerSecond: 20, count: 0 },
+        { name: 'AI Assistant', cost: 5000, linesPerSecond: 100, count: 0 },
+        { name: 'Startup Incubator', cost: 15000, linesPerSecond: 500, count: 0 },
+        { name: 'AI Dev Team', cost: 100000, linesPerSecond: 2000, count: 0 },
+        { name: 'Code Generation API', cost: 250000, linesPerSecond: 5000, count: 0 },
+        { name: 'Quantum Computing Cluster', cost: 500000, linesPerSecond: 10000, count: 0 },
+        { name: 'Autonomous Dev Division', cost: 1000000, linesPerSecond: 25000, count: 0 },
+
+        // Click (click-based upgrades)
+        { name: 'Better Keyboard', cost: 200, linesPerClick: 1, count: 0 },
+        { name: 'Dual Monitor Setup', cost: 600, linesPerClick: 5, count: 0 },
+        { name: 'Mechanical Keyboard', cost: 2000, linesPerClick: 10, count: 0 },
+        { name: 'Ergonomic Chair', cost: 10000, linesPerClick: 25, count: 0 },
+        { name: 'Quantum Dev Tools', cost: 50000, linesPerClick: 50, count: 0 },
+        { name: 'Neural Interface', cost: 200000, linesPerClick: 100, count: 0 },
+        { name: 'Thought-to-Code Translator', cost: 750000, linesPerClick: 250, count: 0 },
+
+        // Infrastructure (hybrid)
+        { name: 'Cloud IDE', cost: 30000, linesPerSecond: 300, linesPerClick: 10, count: 0, unlockAt: 0 },
+        { name: 'On-call DevOps', cost: 100000, linesPerSecond: 1200, linesPerClick: 25, count: 0, unlockAt: 0 },
+        { name: 'Serverless Architecture', cost: 300000, linesPerSecond: 3000, linesPerClick: 50, count: 0, unlockAt: 50000 },
+        { name: 'Global CDN Network', cost: 750000, linesPerSecond: 7500, linesPerClick: 100, count: 0, unlockAt: 100000 },
+
+        // Support (functional upgrades)
+        { name: 'Faster Bonus Engine', cost: 50000, count: 0, unlockAt: 200, type: 'functional' },
+        { name: 'Code Optimizer', cost: 100000, count: 0, unlockAt: 10000, type: 'functional' },
+        { name: 'Automated Testing', cost: 200000, count: 0, unlockAt: 25000, type: 'functional' },
+        { name: 'Continuous Integration', cost: 400000, count: 0, unlockAt: 50000, type: 'functional' },
+    ])
+
+    const savedUpgrades = JSON.parse(localStorage.getItem('upgrades') || '[]')
+
     const upgrades = ref<Upgrade[]>(
-        JSON.parse(localStorage.getItem('upgrades') || 'null') || [
-            {name: 'Junior Dev', cost: 50, lpc: 1, count: 0},
-            {name: 'Mid-Level Dev', cost: 200, lpc: 5, count: 0},
-            {name: 'Senior Dev', cost: 1000, lpc: 20, count: 0},
-            {name: 'AI Assistant', cost: 5000, lpc: 100, count: 0},
-            {name: 'Startup Incubator', cost: 15000, lpc: 500, count: 0},
-            {name: 'AI Dev Team', cost: 100000, lpc: 2000, count: 0},
-            {name: 'Better Keyboard', cost: 200, lpcClick: 1, count: 0},
-            {name: 'Dual Monitor Setup', cost: 600, lpcClick: 5, count: 0},
-            {name: 'Mechanical Keyboard', cost: 2000, lpcClick: 10, count: 0},
-            {name: 'Quantum Dev Tools', cost: 50000, lpcClick: 50, count: 0}
-        ]
+        defaultUpgrades.value.map(defaultUpg => {
+            const saved = savedUpgrades.find((u: Upgrade) => u.name === defaultUpg.name)
+            return saved ? { ...defaultUpg, ...saved } : defaultUpg
+        })
     )
 
     const achievements = ref<Achievement[]>([
-        {text: 'First 100 LOC!', unlocked: false},
-        {text: 'Own 5 Junior Devs', unlocked: false},
-        {text: '1,000 LOC milestone', unlocked: false},
-        {text: 'Buy an AI Assistant', unlocked: false}
+        { text: 'First 100 LOC!', unlocked: false },
+        { text: 'Own 5 Junior Devs', unlocked: false },
+        { text: '1,000 LOC milestone', unlocked: false },
+        { text: 'Buy an AI Assistant', unlocked: false }
     ])
 
     const leaderboard = ref<{ name: string; score: number }[]>(
         JSON.parse(localStorage.getItem('leaderboard') || '[]')
     )
 
-    const theme = ref<string>(localStorage.getItem('theme') || 'dark')
-
     const toggleTheme = () => {
         theme.value = theme.value === 'dark' ? 'light' : 'dark'
     }
 
-    const clickValue = computed(() => {
-        return 1 + upgrades.value.reduce((sum, u) => sum + (u.lpcClick || 0) * u.count, 0)
-    })
+    const resetGame = () => {
+        linesOfCode.value = 0
+        upgrades.value.forEach(upg => {
+            upg.count = 0
+            upg.cost = Math.floor(upg.cost / Math.pow(1.5, upg.count)) // reset cost roughly
+        })
+        achievements.value.forEach(a => a.unlocked = false)
+        themeMode.value = 'default'
+        refactorPoints.value = 0
+    }
 
-    const passiveRate = computed(() => {
-        return upgrades.value.reduce((sum, u) => sum + (u.lpc || 0) * u.count, 0)
-    })
+    const nextRefactorCost = computed(() => 1_000_000 + refactorPoints.value * 2_000_000)
+    const canRefactor = computed(() => bestScore.value >= nextRefactorCost.value)
+    const refactorMultiplier = computed(() => 1 + refactorPoints.value * 0.2)
+
+    const clickValue = computed(() =>
+        (1 + upgrades.value.reduce((sum, u) => sum + (u.linesPerClick || 0) * u.count, 0)) * refactorMultiplier.value
+    )
+
+    const passiveRate = computed(() =>
+        upgrades.value.reduce((sum, u) => sum + (u.linesPerSecond || 0) * u.count, 0) * refactorMultiplier.value
+    )
 
     const multiplierActive = ref(false)
     const autoclickActive = ref(false)
-
     const bonuses = ref<Bonus[]>([])
+
+    let bonusInterval: number
+
+    const performRefactor = () => {
+        if (!canRefactor.value) return
+
+        refactorPoints.value++
+
+        // Hard reset
+        linesOfCode.value = 0
+        upgrades.value.forEach(u => {
+            u.count = 0
+            u.cost = Math.floor(u.cost / Math.pow(1.5, u.count))
+        })
+        achievements.value.forEach(a => (a.unlocked = false))
+        themeMode.value = 'default'
+    }
+
+
+    const startBonusSpawner = () => {
+        clearInterval(bonusInterval)
+        const engine = upgrades.value.find(u => u.name === 'Faster Bonus Engine')
+        const count = engine?.count || 0
+        const delay = Math.max(400, 2000 - count * 200)
+
+        bonusInterval = window.setInterval(() => {
+            bonuses.value = bonuses.value.filter(b => b.expiresAt > Date.now())
+            if (Math.random() < 0.2 + count * 0.01) spawnBonus()
+        }, delay)
+    }
 
     const clickCode = () => {
         const multiplier = multiplierActive.value ? 2 : 1
-        linesOfCode.value += clickValue.value * multiplier
+        const gained = clickValue.value * multiplier
+        linesOfCode.value += gained
+
+        // Update mission progress
+        for (const mission of dailyMissions.value) {
+            if (mission.completed) continue
+            if (mission.type === 'clicks') mission.progress += 1
+            if (mission.type === 'loc') mission.progress += gained
+            if (mission.progress >= mission.goal) {
+                mission.completed = true
+                linesOfCode.value += mission.reward
+            }
+        }
+
         checkAchievements()
-        playClickSound()
     }
 
     const spawnBonus = () => {
-        const existingTypes = bonuses.value.map(b => b.type)
+        const existing = bonuses.value.map(b => b.type)
         const x = Math.random() * (window.innerWidth - 100)
         const y = Math.random() * (window.innerHeight - 100)
-        const typeChance = Math.random()
         const now = Date.now()
+        const rand = Math.random()
 
-        if (typeChance < 0.6 && !existingTypes.includes('loc')) {
-            const locValue = Math.floor(Math.random() * 20) + 10
-            bonuses.value.push({ x, y, type: 'loc', value: locValue, label: `+ ${locValue} LOC`, expiresAt: now + 4000 })
-        } else if (typeChance < 0.85 && !existingTypes.includes('multiplier')) {
+        if (rand < 0.6 && !existing.includes('loc')) {
+            const val = Math.floor(Math.random() * 20) + 10
+            bonuses.value.push({ x, y, type: 'loc', value: val, label: `+ ${val} LOC`, expiresAt: now + 4000 })
+        } else if (rand < 0.85 && !existing.includes('multiplier')) {
             bonuses.value.push({ x, y, type: 'multiplier', value: 2, label: 'x2 Clicks (10s)', expiresAt: now + 4000 })
-        } else if (!existingTypes.includes('autoclick')) {
+        } else if (!existing.includes('autoclick')) {
             bonuses.value.push({ x, y, type: 'autoclick', value: 10, label: 'Auto Click (10s)', expiresAt: now + 4000 })
         }
     }
@@ -98,19 +203,62 @@ export const useGameStore = defineStore('game', () => {
         const bonus = bonuses.value[index]
         bonuses.value.splice(index, 1)
 
-        if (bonus.type === 'loc') {
-            linesOfCode.value += bonus.value
-        } else if (bonus.type === 'multiplier') {
+        if (bonus.type === 'loc') linesOfCode.value += bonus.value
+        if (bonus.type === 'multiplier') {
             multiplierActive.value = true
-            setTimeout(() => multiplierActive.value = false, 10000)
-        } else if (bonus.type === 'autoclick') {
+            setTimeout(() => (multiplierActive.value = false), 10000)
+        }
+        if (bonus.type === 'autoclick') {
             autoclickActive.value = true
-            const interval = setInterval(() => clickCode(), 250)
+            const int = setInterval(() => clickCode(), 250)
             setTimeout(() => {
                 autoclickActive.value = false
-                clearInterval(interval)
+                clearInterval(int)
             }, 10000)
         }
+    }
+
+    const streakRewardTiers = [
+        { day: 3, reward: 3000 },
+        { day: 5, reward: 6000 },
+        { day: 7, reward: 10000 },
+        { day: 14, reward: 25000 },
+        { day: 30, reward: 100000 }
+    ]
+
+    const nextStreakReward = computed(() =>
+        streakRewardTiers.find(tier => streakCount.value >= tier.day && lastStreakReward.value < tier.day)
+    )
+
+    const claimStreakReward = () => {
+        if (!nextStreakReward.value) return
+        linesOfCode.value += nextStreakReward.value.reward
+        lastStreakReward.value = nextStreakReward.value.day
+        localStorage.setItem('lastStreakReward', lastStreakReward.value.toString())
+    }
+
+    // Get the count of a specific upgrade by name
+    const getUpgradeCount = (name: string): number => {
+        const upgrade = upgrades.value.find(u => u.name === name)
+        return upgrade?.count || 0
+    }
+
+    // Calculate cost reduction based on Code Optimizer level
+    const getCostReduction = (): number => {
+        const optimizerLevel = getUpgradeCount('Code Optimizer')
+        return Math.max(0.7, 1 - optimizerLevel * 0.05) // 5% reduction per level, min 30% of original cost
+    }
+
+    // Calculate chance reduction for negative events based on Automated Testing level
+    const getNegativeEventChanceReduction = (): number => {
+        const testingLevel = getUpgradeCount('Automated Testing')
+        return Math.max(0.5, 1 - testingLevel * 0.1) // 10% reduction per level, min 50% of original chance
+    }
+
+    // Calculate chance increase for positive events based on Continuous Integration level
+    const getPositiveEventChanceIncrease = (): number => {
+        const ciLevel = getUpgradeCount('Continuous Integration')
+        return 1 + ciLevel * 0.2 // 20% increase per level
     }
 
     const buyUpgrade = (index: number) => {
@@ -118,9 +266,59 @@ export const useGameStore = defineStore('game', () => {
         if (linesOfCode.value >= upgrade.cost) {
             linesOfCode.value -= upgrade.cost
             upgrade.count++
-            upgrade.cost = Math.floor(upgrade.cost * 1.5)
-            checkAchievements()
+
+            // Apply cost reduction from Code Optimizer
+            const costMultiplier = upgrade.name === 'Code Optimizer' ? 1.5 : 1.5 * getCostReduction()
+            upgrade.cost = Math.floor(upgrade.cost * costMultiplier)
+
+            // Handle special functional upgrades
+            if (upgrade.name === 'Faster Bonus Engine') startBonusSpawner()
+            if (upgrade.name === 'Dark Matrix Theme') themeMode.value = 'matrix'
         }
+    }
+
+    const generateDailyMissions = () => {
+        const today = new Date().toISOString().split('T')[0]
+
+        if (lastActiveDate.value !== today) {
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+            if (lastActiveDate.value === yesterday) {
+                streakCount.value++
+            } else {
+                streakCount.value = 1
+            }
+
+            lastActiveDate.value = today
+            localStorage.setItem('streakCount', streakCount.value.toString())
+            localStorage.setItem('lastActiveDate', today)
+        }
+
+        if (lastMissionDate.value === today) return // already generated today
+
+        const missions: DailyMission[] = [
+            {
+                text: 'Click 100 times',
+                completed: false,
+                goal: 100,
+                progress: 0,
+                reward: 1000,
+                type: 'clicks'
+            },
+            {
+                text: 'Earn 5,000 LOC',
+                completed: false,
+                goal: 5000,
+                progress: 0,
+                reward: 5000,
+                type: 'loc'
+            }
+        ]
+
+        dailyMissions.value = missions
+        lastMissionDate.value = today
+        localStorage.setItem('dailyMissions', JSON.stringify(missions))
+        localStorage.setItem('lastMissionDate', today)
     }
 
     const checkAchievements = () => {
@@ -131,58 +329,193 @@ export const useGameStore = defineStore('game', () => {
     }
 
     const saveScore = (name: string) => {
-        leaderboard.value.push({name, score: linesOfCode.value})
+        leaderboard.value.push({ name, score: linesOfCode.value })
         leaderboard.value.sort((a, b) => b.score - a.score)
         leaderboard.value = leaderboard.value.slice(0, 10)
         localStorage.setItem('leaderboard', JSON.stringify(leaderboard.value))
     }
 
-    const playClickSound = () => {
-    // const clickSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.wav')
-    // clickSound.currentTime = 0
-    // clickSound.play()
+    const upgradeCategory = (u: Upgrade): 'click' | 'auto' | 'infrastructure' | 'visual' | 'support' => {
+        if (u.type === 'cosmetic') return 'visual'
+        if (u.type === 'functional') return 'support'
+        if (u.linesPerClick && u.linesPerSecond) return 'infrastructure'
+        if (u.linesPerClick) return 'click'
+        if (u.linesPerSecond) return 'auto'
+        return 'click'
     }
 
+    const randomEvents = [
+        {
+            name: 'Merge Conflict',
+            message: '🔥 Catastrophic merge conflict! You lost {loss} LOC!',
+            chance: 0.01,
+            minLOC: 500,
+            percentLoss: 0.05
+        },
+        {
+            name: 'Intern Mistake',
+            message: '😱 The intern force-pushed to production! You lost {loss} LOC!',
+            chance: 0.008,
+            minLOC: 1000,
+            percentLoss: 0.08
+        },
+        {
+            name: 'Coffee Spill',
+            message: '☕ You spilled coffee on your keyboard. Lost {loss} LOC fixing typos.',
+            chance: 0.012,
+            minLOC: 300,
+            percentLoss: 0.03
+        },
+        {
+            name: 'Rollback',
+            message: '🔁 Production rollback! {loss} LOC reverted.',
+            chance: 0.01,
+            minLOC: 750,
+            percentLoss: 0.06
+        },
+        {
+            name: 'Code Review Rejection',
+            message: '🛑 Lead dev rejected your changes. {loss} LOC sent back.',
+            chance: 0.015,
+            minLOC: 200,
+            percentLoss: 0.02
+        }
+    ]
+
+    const positiveEvents = [
+        {
+            name: 'Open Source Boost',
+            message: '🎉 Your open source project went viral! You gained {gain} LOC!',
+            chance: 0.01,
+            minLOC: 0,
+            percentGain: 0.05
+        },
+        {
+            name: 'Hackathon Victory',
+            message: '🏆 You won a hackathon and earned {gain} LOC!',
+            chance: 0.008,
+            minLOC: 200,
+            percentGain: 0.08
+        },
+        {
+            name: 'AI Optimizer',
+            message: '🤖 Your AI assistant optimized your code. +{gain} LOC!',
+            chance: 0.012,
+            minLOC: 500,
+            percentGain: 0.03
+        },
+        {
+            name: 'Productivity Surge',
+            message: '🚀 You hit flow state and crushed it! +{gain} LOC!',
+            chance: 0.015,
+            minLOC: 100,
+            percentGain: 0.04
+        }
+    ]
+
+    // Lifecycle
     onMounted(() => {
+        const storedMissions = localStorage.getItem('dailyMissions')
+        if (storedMissions) {
+            dailyMissions.value = JSON.parse(storedMissions)
+        }
+        generateDailyMissions()
+
         setInterval(() => {
             linesOfCode.value += passiveRate.value
             checkAchievements()
         }, 1000)
 
         setInterval(() => {
-            bonuses.value = bonuses.value.filter(b => b.expiresAt > Date.now())
-            if (Math.random() < 0.2) spawnBonus()
-        }, 2000)
+            for (const event of randomEvents) {
+                // Apply Automated Testing effect to reduce negative event chance
+                const reducedChance = event.chance * getNegativeEventChanceReduction()
+                if (Math.random() < reducedChance && linesOfCode.value >= event.minLOC) {
+                    const loss = Math.floor(linesOfCode.value * event.percentLoss)
+                    linesOfCode.value -= loss
+                    alert(event.message.replace('{loss}', loss.toString()))
+                    break
+                }
+            }
+        }, 15000)
+
+        setInterval(() => {
+            for (const event of positiveEvents) {
+                // Apply Continuous Integration effect to increase positive event chance
+                const increasedChance = event.chance * getPositiveEventChanceIncrease()
+                if (Math.random() < increasedChance && linesOfCode.value >= event.minLOC) {
+                    const gain = Math.floor(linesOfCode.value * event.percentGain) || 10
+                    linesOfCode.value += gain
+                    alert(event.message.replace('{gain}', gain.toString()))
+                    break
+                }
+            }
+        }, 15000)
+
+        startBonusSpawner()
     })
 
-    watch(linesOfCode, (val) => {
+    watch(linesOfCode, val => {
         localStorage.setItem('linesOfCode', val.toString())
+        if (val > bestScore.value) {
+            bestScore.value = val
+            localStorage.setItem('bestScore', val.toString())
+        }
     })
 
-    watch(upgrades, (val) => {
-        localStorage.setItem('upgrades', JSON.stringify(val))
-    }, {deep: true})
+    watch(refactorPoints, val => {
+        localStorage.setItem('refactorPoints', val.toString())
+    })
 
-    watch(theme, (val) => {
+    watch(upgrades, val => {
+        localStorage.setItem('upgrades', JSON.stringify(val))
+    }, { deep: true })
+
+    watch(dailyMissions, val => {
+        localStorage.setItem('dailyMissions', JSON.stringify(val))
+    }, { deep: true })
+
+    watch(theme, val => {
         localStorage.setItem('theme', val)
         document.body.className = val === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'
-    }, {immediate: true})
+    }, { immediate: true })
+
+    watch(themeMode, val => {
+        localStorage.setItem('themeMode', val)
+        document.body.classList.toggle('matrix-theme', val === 'matrix')
+    }, { immediate: true })
 
     return {
         linesOfCode,
+        bestScore,
         upgrades,
         achievements,
         leaderboard,
         theme,
+        themeMode,
+        resetGame,
+        lastStreakReward,
         toggleTheme,
         clickCode,
         buyUpgrade,
         saveScore,
+        canRefactor,
+        performRefactor,
         clickValue,
         passiveRate,
         bonuses,
         collectBonus,
         multiplierActive,
-        autoclickActive
+        autoclickActive,
+        upgradeCategory,
+        // New helper functions
+        getUpgradeCount,
+        claimStreakReward,
+        nextStreakReward,
+        dailyMissions,
+        streakCount,
+        getCostReduction,
+        getNegativeEventChanceReduction,
+        getPositiveEventChanceIncrease
     }
 })
